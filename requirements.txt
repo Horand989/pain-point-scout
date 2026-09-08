@@ -1,0 +1,9 @@
+# Pain Point Scout — dependencies
+requests>=2.31
+praw>=7.7            # Reddit official API wrapper (handles auth + rate limiting)
+beautifulsoup4>=4.12 # Quora public-page parsing
+python-dotenv>=1.0   # load API keys from .env (never hardcoded)
+pandas>=2.1          # structuring / scoring / sorting daily results
+APScheduler>=3.10    # optional daily scheduling
+openai>=1.40         # responder drafts (Type A top 10)
+# urllib.robotparser is part of the Python standard library (no install needed)
