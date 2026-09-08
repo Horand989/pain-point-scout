@@ -1,0 +1,50 @@
+name: Daily Pain Point Scout
+
+# Runs every day in the cloud (no laptop needed) and messages you the results.
+# Adjust the cron time below (it is in UTC). 12:00 UTC ≈ 8:00 AM Eastern.
+on:
+  schedule:
+    - cron: "0 12 * * *"
+  workflow_dispatch: {}   # lets you also run it manually from the Actions tab
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Pain Point Scout (push to Veto+ and notify)
+        run: python main.py --push-to-veto --notify
+        env:
+          # Sources
+          REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+          REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
+          REDDIT_USER_AGENT: ${{ secrets.REDDIT_USER_AGENT }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GOOGLE_CSE_ID: ${{ secrets.GOOGLE_CSE_ID }}
+          PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
+          PERPLEXITY_MODEL: sonar
+          # Draft replies
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          RESPONDER_MODEL: gpt-4o-mini
+          # Delivery — Telegram
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # Delivery — Email (SMTP)
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          # Bridge into Veto+
+          VETO_SUPABASE_URL: ${{ secrets.VETO_SUPABASE_URL }}
+          VETO_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.VETO_SUPABASE_SERVICE_ROLE_KEY }}
+          VETO_USER_ID: ${{ secrets.VETO_USER_ID }}

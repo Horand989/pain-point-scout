@@ -25,6 +25,7 @@ from sources import reddit_source, quora_source, google_source, perplexity_sourc
 from scoring import classify_and_score
 from responder import draft_responses
 import bridge_veto
+import notify
 
 SOURCE_FUNCS = {
     "reddit": (reddit_source.fetch, "reddit"),
@@ -49,7 +50,7 @@ def setup_logger(run_date: str) -> logging.Logger:
     return logger
 
 
-def run_once(selected_sources=None, dry_run=False, push_to_veto=False):
+def run_once(selected_sources=None, dry_run=False, push_to_veto=False, notify_me=False):
     run_date = datetime.now().strftime("%Y-%m-%d")
     logger = setup_logger(run_date)
     logger.info("=" * 60)
@@ -82,6 +83,12 @@ def run_once(selected_sources=None, dry_run=False, push_to_veto=False):
     if push_to_veto:
         logger.info("--- Bridge to Veto+ ---")
         bridge_veto.push_build_signals(type_b, logger, dry_run=dry_run)
+
+    # Optional delivery: Telegram + email (each fires only if configured).
+    if notify_me:
+        logger.info("--- Delivery ---")
+        md_path = os.path.join(config.DATA_DIR, f"{run_date}_report.md")
+        notify.deliver(run_date, top_a, type_b, logger, md_path=md_path)
 
     logger.info("Run complete.")
     logger.info("=" * 60)
@@ -143,9 +150,12 @@ def main():
     parser.add_argument("--at", default="08:00", help="Daily run time HH:MM for --schedule (default 08:00).")
     parser.add_argument("--push-to-veto", action="store_true",
                         help="Push Type B build-signals into Veto+ as pending ideas (needs VETO_* in .env).")
+    parser.add_argument("--notify", action="store_true",
+                        help="Send the daily digest via Telegram and/or email (needs their creds in .env).")
     args = parser.parse_args()
 
-    run_once(selected_sources=args.sources, dry_run=args.dry_run, push_to_veto=args.push_to_veto)
+    run_once(selected_sources=args.sources, dry_run=args.dry_run,
+             push_to_veto=args.push_to_veto, notify_me=args.notify)
 
     if args.schedule:
         try:
@@ -156,7 +166,7 @@ def main():
         hh, mm = (int(x) for x in args.at.split(":"))
         sched = BlockingScheduler()
         sched.add_job(lambda: run_once(selected_sources=args.sources, dry_run=args.dry_run,
-                                       push_to_veto=args.push_to_veto),
+                                       push_to_veto=args.push_to_veto, notify_me=args.notify),
                       "cron", hour=hh, minute=mm)
         print(f"Scheduled daily run at {args.at}. Leave this window open. Ctrl+C to stop.")
         try:

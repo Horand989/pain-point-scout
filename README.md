@@ -71,19 +71,48 @@ python main.py --sources reddit google
 
 ---
 
-## Daily schedule
+## Full automation — daily, hands-off, delivered to you
 
-**Recommended on Windows — Task Scheduler** (survives reboots, no window to keep open):
-1. Open Task Scheduler → Create Basic Task → Daily → pick a time.
+Goal: it runs **every day on its own** and sends you the 5–10 things to reply to
+(with drafts) via **Telegram + email**, and drops build-signals into Veto+ — with
+no action from you. Command it runs: `python main.py --push-to-veto --notify`.
+
+### A) Delivery setup (one time)
+**Telegram (phone):**
+1. In Telegram, message **@BotFather** → `/newbot` → follow prompts → copy the **bot token**.
+2. Message your new bot once (say "hi").
+3. Open `https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates` in a browser → find `"chat":{"id": ...}` → that number is your **chat id**.
+4. Put both in `.env` (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`).
+
+**Email (Gmail):**
+1. Turn on 2-step verification on your Google account.
+2. Google Account → Security → **App passwords** → create one → copy the 16-char password.
+3. Put your Gmail + that app password into `.env` (`SMTP_USER`, `SMTP_PASSWORD`, `EMAIL_TO`).
+
+Test delivery locally: `python main.py --notify --sources perplexity`
+
+### B) Cloud schedule (runs even when your laptop is off) — GitHub Actions
+The workflow is already in `.github/workflows/daily.yml`.
+1. Create a **private GitHub repo** and push this project to it.
+2. In the repo: **Settings → Secrets and variables → Actions → New repository secret**, and add each key
+   (same names as in `.env`): `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `REDDIT_USER_AGENT`,
+   `GOOGLE_API_KEY`, `GOOGLE_CSE_ID`, `PERPLEXITY_API_KEY`, `OPENAI_API_KEY`,
+   `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`,
+   `SMTP_PASSWORD`, `EMAIL_FROM`, `EMAIL_TO`, `VETO_SUPABASE_URL`,
+   `VETO_SUPABASE_SERVICE_ROLE_KEY`, `VETO_USER_ID`.
+3. Edit the `cron:` time in `daily.yml` if you want (it's in UTC; `0 12 * * *` ≈ 8 AM Eastern).
+4. Test it now: repo → **Actions** tab → "Daily Pain Point Scout" → **Run workflow**.
+
+That's it — from then on it runs daily on GitHub's servers and messages you. Your laptop can be off.
+
+### Local alternative (laptop must be on) — Windows Task Scheduler
+1. Task Scheduler → Create Basic Task → Daily → pick a time.
 2. Action → Start a program:
    - Program: `C:\Users\serfi\Documents\Projects\pain-point-scout\.venv\Scripts\python.exe`
-   - Arguments: `main.py`
+   - Arguments: `main.py --push-to-veto --notify`
    - Start in: `C:\Users\serfi\Documents\Projects\pain-point-scout`
 
-**Or, built-in scheduler** (keeps a window open):
-```bash
-python main.py --schedule --at 08:00
-```
+Or keep a window open: `python main.py --schedule --at 08:00 --push-to-veto --notify`
 
 ---
 
