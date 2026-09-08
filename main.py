@@ -24,6 +24,7 @@ import config
 from sources import reddit_source, quora_source, google_source, perplexity_source
 from scoring import classify_and_score
 from responder import draft_responses
+import bridge_veto
 
 SOURCE_FUNCS = {
     "reddit": (reddit_source.fetch, "reddit"),
@@ -48,7 +49,7 @@ def setup_logger(run_date: str) -> logging.Logger:
     return logger
 
 
-def run_once(selected_sources=None, dry_run=False):
+def run_once(selected_sources=None, dry_run=False, push_to_veto=False):
     run_date = datetime.now().strftime("%Y-%m-%d")
     logger = setup_logger(run_date)
     logger.info("=" * 60)
@@ -76,6 +77,12 @@ def run_once(selected_sources=None, dry_run=False):
     draft_responses(top_a, logger, dry_run=dry_run)
 
     _write_reports(run_date, top_a, type_b, logger)
+
+    # Optional bridge: push build-signals into Veto+ (writes only to its DB).
+    if push_to_veto:
+        logger.info("--- Bridge to Veto+ ---")
+        bridge_veto.push_build_signals(type_b, logger, dry_run=dry_run)
+
     logger.info("Run complete.")
     logger.info("=" * 60)
     return top_a, type_b
@@ -134,9 +141,11 @@ def main():
                         help="Only run these sources (default: all four).")
     parser.add_argument("--schedule", action="store_true", help="Run now, then daily via APScheduler.")
     parser.add_argument("--at", default="08:00", help="Daily run time HH:MM for --schedule (default 08:00).")
+    parser.add_argument("--push-to-veto", action="store_true",
+                        help="Push Type B build-signals into Veto+ as pending ideas (needs VETO_* in .env).")
     args = parser.parse_args()
 
-    run_once(selected_sources=args.sources, dry_run=args.dry_run)
+    run_once(selected_sources=args.sources, dry_run=args.dry_run, push_to_veto=args.push_to_veto)
 
     if args.schedule:
         try:
@@ -146,7 +155,8 @@ def main():
             return
         hh, mm = (int(x) for x in args.at.split(":"))
         sched = BlockingScheduler()
-        sched.add_job(lambda: run_once(selected_sources=args.sources, dry_run=args.dry_run),
+        sched.add_job(lambda: run_once(selected_sources=args.sources, dry_run=args.dry_run,
+                                       push_to_veto=args.push_to_veto),
                       "cron", hour=hh, minute=mm)
         print(f"Scheduled daily run at {args.at}. Leave this window open. Ctrl+C to stop.")
         try:
