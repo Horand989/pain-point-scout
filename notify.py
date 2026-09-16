@@ -22,7 +22,7 @@ def _email_configured() -> bool:
                 and os.getenv("SMTP_PASSWORD") and os.getenv("EMAIL_TO"))
 
 
-def _digest_text(run_date, top_a, type_b) -> str:
+def _digest_text(run_date, top_a, type_b, fb=None) -> str:
     lines = [
         f"Pain Point Scout — {run_date}",
         f"{len(top_a)} conversations to reply to today · {len(type_b)} build signals.",
@@ -40,6 +40,13 @@ def _digest_text(run_date, top_a, type_b) -> str:
         lines.append("— Build signals (ideas for Veto+) —")
         for r in type_b[:10]:
             lines.append(f"• {(r.pattern or r.title)}  ({r.source})")
+    if fb:
+        lines.append("")
+        lines.append("— Facebook post ideas (post BY HAND, rotate) —")
+        for item in fb:
+            lines.append(f"[{item.get('group','')}]")
+            lines.append(item.get('post', ''))
+            lines.append("")
     return "\n".join(lines)
 
 
@@ -98,12 +105,12 @@ def _send_email(subject, body, md_path, logger) -> bool:
         return False
 
 
-def deliver(run_date, top_a, type_b, logger, md_path=None):
+def deliver(run_date, top_a, type_b, logger, md_path=None, fb=None):
     if not (_telegram_configured() or _email_configured()):
         logger.info("Notify: no Telegram/email credentials set — skipping delivery "
                     "(report still saved in data/).")
         return
-    text = _digest_text(run_date, top_a, type_b)
+    text = _digest_text(run_date, top_a, type_b, fb=fb)
     subject = f"Pain Point Scout — {run_date}: {len(top_a)} to reply to"
     if _telegram_configured():
         _send_telegram(text, logger)

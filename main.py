@@ -26,6 +26,7 @@ from scoring import classify_and_score
 from responder import draft_responses
 import bridge_veto
 import notify
+import fb_posts
 
 SOURCE_FUNCS = {
     "reddit": (reddit_source.fetch, "reddit"),
@@ -77,7 +78,11 @@ def run_once(selected_sources=None, dry_run=False, push_to_veto=False, notify_me
     top_a, all_a, type_b = classify_and_score(all_results, logger)
     draft_responses(top_a, logger, dry_run=dry_run)
 
-    _write_reports(run_date, top_a, type_b, logger)
+    # Tailored Facebook post ideas (rotate a few groups/day; posted BY HAND).
+    logger.info("--- Facebook post ideas ---")
+    fb = fb_posts.generate_group_posts(top_a, logger, dry_run=dry_run)
+
+    _write_reports(run_date, top_a, type_b, fb, logger)
 
     # Optional bridge: push build-signals into Veto+ (writes only to its DB).
     if push_to_veto:
@@ -88,14 +93,14 @@ def run_once(selected_sources=None, dry_run=False, push_to_veto=False, notify_me
     if notify_me:
         logger.info("--- Delivery ---")
         md_path = os.path.join(config.DATA_DIR, f"{run_date}_report.md")
-        notify.deliver(run_date, top_a, type_b, logger, md_path=md_path)
+        notify.deliver(run_date, top_a, type_b, logger, md_path=md_path, fb=fb)
 
     logger.info("Run complete.")
     logger.info("=" * 60)
     return top_a, type_b
 
 
-def _write_reports(run_date, top_a, type_b, logger):
+def _write_reports(run_date, top_a, type_b, fb, logger):
     os.makedirs(config.DATA_DIR, exist_ok=True)
 
     # Type A top list — the daily action list, as CSV.
@@ -134,6 +139,11 @@ def _write_reports(run_date, top_a, type_b, logger):
             f.write("_No build signals found today._\n\n")
         for r in type_b[:25]:
             f.write(f"- **[{r.source}]** _{r.pattern or r.title}_ — {r.url}\n")
+        f.write("\n---\n\n## Facebook post ideas (rotate; post BY HAND)\n\n")
+        if not fb:
+            f.write("_No Facebook post ideas today._\n")
+        for item in (fb or []):
+            f.write(f"### {item.get('group','')}\n{item.get('post','')}\n\n")
 
     logger.info(f"Wrote: {a_path}")
     logger.info(f"Wrote: {b_path}")
