@@ -52,6 +52,7 @@ def fetch(queries, limits, logger):
         return []
 
     model = os.getenv("PERPLEXITY_MODEL", "sonar")
+    recency = os.getenv("PERPLEXITY_RECENCY", "month")
     results_per_query = limits.get("results_per_query", 5)
     max_queries = limits.get("max_queries", 12)
 
@@ -63,10 +64,13 @@ def fetch(queries, limits, logger):
                 headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                 json={
                     "model": model,
+                    "search_recency_filter": recency,
                     "messages": [
                         {"role": "system", "content": SYSTEM},
                         {"role": "user", "content": (
-                            f"Find {results_per_query} recent, real questions or discussions about: \"{q}\". "
+                            f"Find {results_per_query} RECENT (posted within the last few months, "
+                            f"this year) real questions or discussions about: \"{q}\". "
+                            "Only include current, recent threads, not old ones from years ago. "
                             "Focus on pain points, complaints, and unmet needs. JSON only."
                         )},
                     ],
