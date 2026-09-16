@@ -34,7 +34,7 @@ def _digest_text(run_date, top_a, type_b, fb=None) -> str:
         draft = (r.draft_response or "").strip().replace("\n", " ")
         lines.append(f"#{r.rank}  [{r.source}]  {r.title}")
         lines.append(f"    {r.url}")
-        lines.append(f"    Draft: {draft[:320]}")
+        lines.append(f"    Draft: {draft[:600]}")
         lines.append("")
     if type_b:
         lines.append("— Build signals (ideas for Veto+) —")

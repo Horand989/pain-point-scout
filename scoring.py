@@ -77,9 +77,12 @@ def classify(r):
         r.result_type = "A"
     else:
         r.result_type = "B"
-        # The observed pattern = the search query behind it (stored in raw_snippet).
+        # Prefer the actual surfaced discussion title (specific); fall back to the
+        # search-query theme only if there's no real title.
+        title = (r.title or "").strip()
         m = re.search(r"QUERY:\s*(.+)", r.raw_snippet)
-        r.pattern = (m.group(1).strip() if m else r.title).strip()
+        q = (m.group(1).strip() if m else "")
+        r.pattern = title if len(title) > 15 else (q or title)
 
 
 def score_type_a(r) -> float:
@@ -98,7 +101,19 @@ def classify_and_score(results, logger):
         classify(r)
 
     type_a = [r for r in results if r.result_type == "A"]
-    type_b = [r for r in results if r.result_type == "B"]
+
+    # De-duplicate Type B build signals by their pattern/title so the same theme
+    # doesn't repeat (e.g. "best AI tool for solo entrepreneurs" x5).
+    type_b = []
+    seen_b = set()
+    for r in results:
+        if r.result_type != "B":
+            continue
+        k = (r.pattern or r.title or "").strip().lower()
+        if not k or k in seen_b:
+            continue
+        seen_b.add(k)
+        type_b.append(r)
 
     for r in type_a:
         r.score = score_type_a(r)

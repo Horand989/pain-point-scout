@@ -82,7 +82,8 @@ def generate_group_posts(top_items, logger, dry_run=False, day_index=None):
         cleaned = []
         for p in posts:
             if isinstance(p, dict) and p.get("post"):
-                text = re.sub(r"\s[-—]\s", ", ", p["post"]).strip()
+                text = re.sub(r"\s*[—–―]\s*", ", ", p["post"])
+                text = re.sub(r"\s-\s", ", ", text).strip()
                 cleaned.append({"group": p.get("group", ""), "post": text})
         if cleaned:
             logger.info(f"FB posts: generated {len(cleaned)} tailored posts.")
