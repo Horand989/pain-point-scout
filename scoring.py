@@ -60,6 +60,21 @@ def _is_discussion_url(url) -> bool:
     return any(h in u for h in DISCUSSION_HOSTS)
 
 
+def _is_real_thread(url) -> bool:
+    """True only for a specific post/thread/article — never a bare homepage or
+    subreddit landing page (those are useless: nothing to reply to)."""
+    from urllib.parse import urlparse
+    u = (url or "").lower().strip()
+    if not u:
+        return False
+    if "reddit.com" in u:
+        return "/comments/" in u          # a real thread, not r/sub/ or reddit.com/
+    if "news.ycombinator.com" in u:
+        return "item?id=" in u             # a real HN item, not the front page
+    path = urlparse(u).path.strip("/")
+    return len(path) > 4                    # generic: must have a real content path
+
+
 def classify(r):
     """Set r.result_type to 'A' or 'B' and, for B, record the observed pattern."""
     text = _text_of(r)
@@ -97,6 +112,14 @@ def score_type_a(r) -> float:
 
 def classify_and_score(results, logger):
     """Classify all, score+rank Type A, return (type_a_top, type_a_all, type_b)."""
+    # Drop junk URLs (bare homepages / subreddit landing pages) up front — there's
+    # nothing to reply to on those.
+    before = len(results)
+    results = [r for r in results if _is_real_thread(r.url)]
+    dropped = before - len(results)
+    if dropped:
+        logger.info(f"Scoring: dropped {dropped} non-thread/homepage URLs.")
+
     for r in results:
         classify(r)
 
@@ -118,13 +141,20 @@ def classify_and_score(results, logger):
     for r in type_a:
         r.score = score_type_a(r)
 
-    # De-duplicate Type A by URL, keeping the highest score.
-    best_by_url = {}
+    # De-duplicate Type A by the underlying thread (Reddit thread id, else URL),
+    # keeping the highest score — catches the same thread with different slug formatting.
+    def _dedup_key(url):
+        u = (url or "").lower()
+        m = re.search(r"/comments/([a-z0-9]+)", u)
+        return "reddit:" + m.group(1) if m else u.rstrip("/")
+
+    best = {}
     for r in sorted(type_a, key=lambda x: x.score, reverse=True):
-        if r.url and r.url in best_by_url:
+        k = _dedup_key(r.url) or id(r)
+        if k in best:
             continue
-        best_by_url[r.url or id(r)] = r
-    type_a_sorted = sorted(best_by_url.values(), key=lambda x: x.score, reverse=True)
+        best[k] = r
+    type_a_sorted = sorted(best.values(), key=lambda x: x.score, reverse=True)
 
     top = type_a_sorted[:TOP_N]
     for i, r in enumerate(top, 1):

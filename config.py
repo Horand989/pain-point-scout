@@ -82,5 +82,5 @@ LOGS_DIR = "logs"
 RESPONDER_MODEL = os.getenv("RESPONDER_MODEL", "gpt-4o-mini")
 PERPLEXITY_MODEL = os.getenv("PERPLEXITY_MODEL", "sonar")
 # How recent Perplexity results must be: "day" | "week" | "month" | "year".
-# "week" = freshest; widen to "month"/"year" if a run comes back too thin.
-PERPLEXITY_RECENCY = os.getenv("PERPLEXITY_RECENCY", "week")
+# "month" = good balance of fresh + enough real threads (week was too thin).
+PERPLEXITY_RECENCY = os.getenv("PERPLEXITY_RECENCY", "month")
