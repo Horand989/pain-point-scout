@@ -6,4 +6,5 @@ python-dotenv>=1.0   # load API keys from .env (never hardcoded)
 pandas>=2.1          # structuring / scoring / sorting daily results
 APScheduler>=3.10    # optional daily scheduling
 openai>=1.40         # responder drafts (Type A top 10)
+truststore>=0.9      # use OS cert store (fixes local SSL interception)
 # urllib.robotparser is part of the Python standard library (no install needed)

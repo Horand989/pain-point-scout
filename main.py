@@ -20,6 +20,14 @@ from datetime import datetime
 import pandas as pd
 from dotenv import load_dotenv
 
+# Use the OS certificate store so corporate/antivirus SSL interception on this
+# machine does not break HTTPS calls (fixes the "self-signed certificate" errors).
+try:
+    import truststore
+    truststore.inject_into_ssl()
+except Exception:
+    pass
+
 import config
 from sources import reddit_source, quora_source, google_source, perplexity_source
 from scoring import classify_and_score
