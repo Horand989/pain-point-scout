@@ -31,6 +31,8 @@ jobs:
           GOOGLE_CSE_ID: ${{ secrets.GOOGLE_CSE_ID }}
           PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
           PERPLEXITY_MODEL: sonar
+          # Fallback scraper for Reddit + Google (kicks in when official APIs are down)
+          SCRAPINGBEE_API_KEY: ${{ secrets.SCRAPINGBEE_API_KEY }}
           # Draft replies
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           RESPONDER_MODEL: gpt-4o-mini

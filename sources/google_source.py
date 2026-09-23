@@ -1,14 +1,16 @@
 """
-Google source — official Custom Search JSON API.
+Google source — official Custom Search API as PRIMARY, ScrapingBee as FALLBACK.
 
-We do NOT scrape Google's results pages directly (against ToS + unreliable).
-Surfaces the questions people type into Google around the niches.
-Never crashes the run: logs and continues on any error.
+Tries the free CSE first. The moment it 403s (API not active on the project),
+it stops hammering CSE and switches to ScrapingBee's Google Search API
+(structured JSON) — so Google results come through either way.
+Never crashes the run.
 """
 import os
 import requests
 
 from .base import Result
+from . import scrapingbee
 
 ENDPOINT = "https://www.googleapis.com/customsearch/v1"
 
@@ -16,44 +18,45 @@ ENDPOINT = "https://www.googleapis.com/customsearch/v1"
 def fetch(queries, limits, logger):
     api_key = os.getenv("GOOGLE_API_KEY")
     cse_id = os.getenv("GOOGLE_CSE_ID")
-
-    if not api_key or not cse_id:
-        logger.warning("Google: GOOGLE_API_KEY/GOOGLE_CSE_ID not set — skipping this source.")
-        return []
-
-    results_per_query = limits.get("results_per_query", 5)
-    daily_cap = limits.get("daily_query_cap", 90)
+    per = limits.get("results_per_query", 5)
+    max_queries = limits.get("max_queries", 8)
 
     out = []
-    used = 0
+    used_cse = False
+    cse_dead = not (api_key and cse_id)
 
-    for q in queries:
-        if used >= daily_cap:
-            logger.warning(f"Google: hit daily query cap ({daily_cap}) — stopping.")
-            break
-        try:
-            resp = requests.get(
-                ENDPOINT,
-                params={"key": api_key, "cx": cse_id, "q": q, "num": min(results_per_query, 10)},
-                timeout=20,
-            )
-            used += 1
-            if resp.status_code != 200:
-                logger.warning(f"Google: '{q}' returned HTTP {resp.status_code}: {resp.text[:200]}")
-                continue
-            data = resp.json()
-            for item in (data.get("items") or [])[:results_per_query]:
-                out.append(Result(
-                    source="google",
-                    title=item.get("title", ""),
-                    url=item.get("link", ""),
-                    summary=item.get("snippet", ""),
-                    raw_snippet=f"QUERY: {q}\n{item.get('snippet', '')}",
-                    timestamp="",
-                ))
-        except Exception as e:
-            logger.error(f"Google: search failed for '{q}': {e}")
-            continue
+    # 1) Official CSE first (free). Bail to fallback on the first failure.
+    if not cse_dead:
+        for q in queries[:max_queries]:
+            try:
+                r = requests.get(ENDPOINT,
+                                 params={"key": api_key, "cx": cse_id, "q": q, "num": min(per, 10)},
+                                 timeout=20)
+                if r.status_code != 200:
+                    logger.warning(f"Google CSE '{q}': HTTP {r.status_code} — switching to ScrapingBee fallback.")
+                    cse_dead = True
+                    break
+                used_cse = True
+                for item in (r.json().get("items") or [])[:per]:
+                    out.append(Result(source="google", title=item.get("title", ""),
+                                      url=item.get("link", ""), summary=item.get("snippet", ""),
+                                      raw_snippet=f"QUERY: {q}\n{item.get('snippet','')}", timestamp=""))
+            except Exception as e:
+                logger.error(f"Google CSE '{q}': {e} — switching to ScrapingBee fallback.")
+                cse_dead = True
+                break
 
-    logger.info(f"Google: collected {len(out)} items across {used} queries.")
+    # 2) Fallback: ScrapingBee Google Search API.
+    if (cse_dead or not out) and scrapingbee.available():
+        logger.info("Google: using ScrapingBee fallback.")
+        seen = {r.url for r in out}
+        for q in queries[:max_queries]:
+            for r in scrapingbee.google(q, per, logger):
+                if r.url in seen:
+                    continue
+                seen.add(r.url)
+                out.append(r)
+
+    via = "CSE" if used_cse and out else ("ScrapingBee" if out else "none")
+    logger.info(f"Google: collected {len(out)} items (via {via}).")
     return out

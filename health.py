@@ -6,10 +6,13 @@ so if a source is down you are told exactly which one and why.
 import os
 import requests
 
+from sources import scrapingbee
+
 
 def check_sources():
     """Return a list of (source_name, status_string). status starts with OK or FAIL."""
     out = []
+    sb_up = scrapingbee.available()
 
     # Perplexity
     k = os.getenv("PERPLEXITY_API_KEY")
@@ -30,10 +33,12 @@ def check_sources():
         except Exception as e:
             out.append(("Perplexity", f"FAIL — {str(e)[:50]}"))
 
-    # Google Custom Search
+    # Google Custom Search (official). If it's down but ScrapingBee is available,
+    # report OK — via ScrapingBee, so the run still fetches Google results.
     gk, cx = os.getenv("GOOGLE_API_KEY"), os.getenv("GOOGLE_CSE_ID")
+    google_status = None
     if not (gk and cx):
-        out.append(("Google", "FAIL — missing key or engine id"))
+        google_status = "missing key or engine id"
     else:
         try:
             r = requests.get("https://www.googleapis.com/customsearch/v1",
@@ -41,15 +46,25 @@ def check_sources():
             if r.status_code == 200:
                 out.append(("Google", "OK"))
             elif r.status_code == 403:
-                out.append(("Google", "FAIL — HTTP 403 (Custom Search API not active on the project)"))
+                google_status = "HTTP 403 (Custom Search API not active on the project)"
             else:
-                out.append(("Google", f"FAIL — HTTP {r.status_code}"))
+                google_status = f"HTTP {r.status_code}"
         except Exception as e:
-            out.append(("Google", f"FAIL — {str(e)[:50]}"))
+            google_status = str(e)[:50]
+    if google_status is not None:
+        if sb_up:
+            out.append(("Google", f"OK — via ScrapingBee (official CSE: {google_status})"))
+        else:
+            out.append(("Google", f"FAIL — {google_status}; no ScrapingBee key for fallback"))
 
-    # Reddit (official API)
+    # Reddit (official API). Same fallback logic: no official key but ScrapingBee up = OK.
     rc = os.getenv("REDDIT_CLIENT_ID")
-    out.append(("Reddit", "OK — credentials present" if rc else "FAIL — no key yet (access pending approval)"))
+    if rc:
+        out.append(("Reddit", "OK — credentials present"))
+    elif sb_up:
+        out.append(("Reddit", "OK — via ScrapingBee (no official key yet)"))
+    else:
+        out.append(("Reddit", "FAIL — no key yet (access pending approval); no ScrapingBee key for fallback"))
 
     # Hacker News (keyless backup — should basically always work)
     try:
@@ -58,6 +73,13 @@ def check_sources():
         out.append(("HackerNews", "OK" if r.status_code == 200 else f"FAIL — HTTP {r.status_code}"))
     except Exception as e:
         out.append(("HackerNews", f"FAIL — {str(e)[:50]}"))
+
+    # ScrapingBee (the fallback engine for Reddit + Google) — report separately.
+    if sb_up:
+        ok, detail = scrapingbee.health()
+        out.append(("ScrapingBee", f"OK — {detail}" if ok else f"FAIL — {detail}"))
+    else:
+        out.append(("ScrapingBee", "FAIL — no API key set (Reddit/Google have no fallback)"))
 
     return out
 
