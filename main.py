@@ -29,7 +29,8 @@ except Exception:
     pass
 
 import config
-from sources import reddit_source, quora_source, google_source, perplexity_source
+import health
+from sources import reddit_source, quora_source, google_source, perplexity_source, hackernews_source
 from scoring import classify_and_score
 from responder import draft_responses
 import bridge_veto
@@ -37,9 +38,10 @@ import notify
 import fb_posts
 
 SOURCE_FUNCS = {
+    "hackernews": (hackernews_source.fetch, "hackernews"),  # keyless backup — always try it
+    "perplexity": (perplexity_source.fetch, "perplexity"),
     "reddit": (reddit_source.fetch, "reddit"),
     "google": (google_source.fetch, "google"),
-    "perplexity": (perplexity_source.fetch, "perplexity"),
     "quora": (quora_source.fetch, "quora"),
 }
 
@@ -69,19 +71,40 @@ def run_once(selected_sources=None, dry_run=False, push_to_veto=False, notify_me
     logger.info(f"Built {len(queries)} search queries across {len(config.TOPICS_AND_NICHES)} niches.")
 
     active = selected_sources or list(SOURCE_FUNCS.keys())
+
+    # Health check up front — so a zero is NEVER a mystery: we know which
+    # source is up or down (and why) before we even run, and it goes in the digest.
+    source_status = health.check_sources()
+    logger.info("--- Source health ---")
+    for n, s in source_status:
+        logger.info(f"   {n}: {s}")
+
+    # Sources the health check already knows are down — skip them so we don't
+    # waste time hammering a dead API (their failure is already flagged in the digest).
+    down = {n.lower() for n, s in source_status if s.startswith("FAIL")}
+
     all_results = []
+    source_counts = {}
     for name in active:
+        if name in down:
+            logger.info(f"--- Source: {name} — SKIPPED (health check: DOWN) ---")
+            source_counts[name] = 0
+            continue
         fetch_fn, _ = SOURCE_FUNCS[name]
         limits = config.LIMITS.get(name, {})
         logger.info(f"--- Source: {name} ---")
         try:
-            all_results.extend(fetch_fn(queries, limits, logger) or [])
+            items = fetch_fn(queries, limits, logger) or []
+            all_results.extend(items)
+            source_counts[name] = len(items)
         except Exception as e:
+            source_counts[name] = 0
             logger.error(f"{name}: source crashed unexpectedly ({e}) — skipped.")
 
     logger.info(f"Collected {len(all_results)} raw items total.")
     if not all_results:
-        logger.warning("No results from any source. Check your .env keys. Writing empty report.")
+        logger.warning("NO RESULTS from any source — see Source health above. This is NOT normal: "
+                       "a source is down. The digest will flag which one and why.")
 
     top_a, all_a, type_b = classify_and_score(all_results, logger)
     draft_responses(top_a, logger, dry_run=dry_run)
@@ -90,7 +113,7 @@ def run_once(selected_sources=None, dry_run=False, push_to_veto=False, notify_me
     logger.info("--- Facebook post ideas ---")
     fb = fb_posts.generate_group_posts(top_a, logger, dry_run=dry_run)
 
-    _write_reports(run_date, top_a, type_b, fb, logger)
+    _write_reports(run_date, top_a, type_b, fb, source_status, source_counts, logger)
 
     # Optional bridge: push build-signals into Veto+ (writes only to its DB).
     if push_to_veto:
@@ -101,14 +124,15 @@ def run_once(selected_sources=None, dry_run=False, push_to_veto=False, notify_me
     if notify_me:
         logger.info("--- Delivery ---")
         md_path = os.path.join(config.DATA_DIR, f"{run_date}_report.md")
-        notify.deliver(run_date, top_a, type_b, logger, md_path=md_path, fb=fb)
+        notify.deliver(run_date, top_a, type_b, logger, md_path=md_path, fb=fb,
+                       source_status=source_status, source_counts=source_counts)
 
     logger.info("Run complete.")
     logger.info("=" * 60)
     return top_a, type_b
 
 
-def _write_reports(run_date, top_a, type_b, fb, logger):
+def _write_reports(run_date, top_a, type_b, fb, source_status, source_counts, logger):
     os.makedirs(config.DATA_DIR, exist_ok=True)
 
     # Type A top list — the daily action list, as CSV.
@@ -134,6 +158,15 @@ def _write_reports(run_date, top_a, type_b, fb, logger):
         f.write(f"# Pain Point Scout — {run_date}\n\n")
         f.write(f"**{len(top_a)} engagement opportunities** to reply to today, "
                 f"plus **{len(type_b)} build signals** to consider.\n\n")
+        f.write("## Source status\n\n")
+        for name, st in source_status:
+            key = {"HackerNews": "hackernews"}.get(name, name.lower())
+            got = f" — {source_counts.get(key, 0)} found" if st.startswith("OK") else ""
+            f.write(f"- **{name}:** {st}{got}\n")
+        f.write("\n")
+        if not top_a and not type_b:
+            f.write("> WARNING: No conversations found. See Source status above — a source is DOWN "
+                    "(usually a dead or missing API key). This is not normal; fix the flagged source.\n\n")
         f.write("---\n\n## ✍️ Today's Top Engagement Opportunities (Type A)\n\n")
         if not top_a:
             f.write("_No engagement opportunities found today._\n\n")

@@ -66,6 +66,10 @@ LIMITS = {
         "results_per_query": 5,
         "max_queries": 12,
     },
+    "hackernews": {
+        "results_per_query": 6,
+        "max_queries": 10,
+    },
     "quora": {
         "results_per_query": 10,
         "request_delay_seconds": 8,  # spaced out — Quora has no API

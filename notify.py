@@ -22,12 +22,22 @@ def _email_configured() -> bool:
                 and os.getenv("SMTP_PASSWORD") and os.getenv("EMAIL_TO"))
 
 
-def _digest_text(run_date, top_a, type_b, fb=None) -> str:
+def _digest_text(run_date, top_a, type_b, fb=None, source_status=None, source_counts=None) -> str:
     lines = [
         f"Pain Point Scout — {run_date}",
         f"{len(top_a)} conversations to reply to today · {len(type_b)} build signals.",
         "",
     ]
+    if source_status:
+        if not top_a and not type_b:
+            lines.append("WARNING: ZERO results this run — a source is DOWN. See status below and fix the flagged one.")
+        lines.append("— Source status —")
+        for name, st in source_status:
+            key = {"HackerNews": "hackernews"}.get(name, name.lower())
+            got = f"  ({(source_counts or {}).get(key, 0)} found)" if st.startswith("OK") else ""
+            mark = "OK  " if st.startswith("OK") else "DOWN"
+            lines.append(f"[{mark}] {name}: {st}{got}")
+        lines.append("")
     if not top_a:
         lines.append("(No engagement opportunities found today.)")
     for r in top_a:
@@ -105,12 +115,14 @@ def _send_email(subject, body, md_path, logger) -> bool:
         return False
 
 
-def deliver(run_date, top_a, type_b, logger, md_path=None, fb=None):
+def deliver(run_date, top_a, type_b, logger, md_path=None, fb=None,
+            source_status=None, source_counts=None):
     if not (_telegram_configured() or _email_configured()):
         logger.info("Notify: no Telegram/email credentials set — skipping delivery "
                     "(report still saved in data/).")
         return
-    text = _digest_text(run_date, top_a, type_b, fb=fb)
+    text = _digest_text(run_date, top_a, type_b, fb=fb,
+                        source_status=source_status, source_counts=source_counts)
     subject = f"Pain Point Scout — {run_date}: {len(top_a)} to reply to"
     if _telegram_configured():
         _send_telegram(text, logger)
